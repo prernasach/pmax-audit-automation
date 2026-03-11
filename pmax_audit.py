@@ -146,37 +146,44 @@ def run_audit(df):
 
 # ── Chart 1: Issue Heatmap ──────────────────────────────────────────────────
 def chart_issue_heatmap(df):
-    issue_cols = {
-        "ad_strength_issue": "Ad Strength",
-        "budget_issue": "Budget Util",
-        "url_expansion_issue": "URL Expansion",
-        "roas_issue": "ROAS vs Target",
-        "audience_issue": "Audience Signals",
-        "asset_issue": "Asset Completeness"
-    }
+    # Recalculate flags directly from raw columns — fully self-contained
+    audit_flags = pd.DataFrame(index=df["campaign_name"])
+    audit_flags["Ad Strength"]       = df["ad_strength"].isin(["Fair", "Poor"]).values.astype(int)
+    audit_flags["Budget Util"]       = (df["budget_utilization"] < 70).values.astype(int)
+    audit_flags["URL Expansion"]     = (df["url_expansion"] == "Disabled").values.astype(int)
+    audit_flags["ROAS vs Target"]    = (df["actual_roas"] < df["target_roas"] * 0.8).values.astype(int)
+    audit_flags["Audience Signals"]  = (~df["audience_signals"]).values.astype(int)
+    audit_flags["Asset Completeness"]= ((df["headlines_count"] < 8) | (df["images_count"] < 5)).values.astype(int)
 
-    # Re-run flags for chart
-    audit_flags = pd.DataFrame({
-        "Ad Strength": df["ad_strength"].isin(["Fair", "Poor"]).astype(int),
-        "Budget Util": (df["budget_utilization"] < 70).astype(int),
-        "URL Expansion": (df["url_expansion"] == "Disabled").astype(int),
-        "ROAS vs Target": (df["actual_roas"] < df["target_roas"] * 0.8).astype(int),
-        "Audience Signals": (~df["audience_signals"]).astype(int),
-        "Asset Completeness": ((df["headlines_count"] < 8) | (df["images_count"] < 5)).astype(int),
-    }, index=df["campaign_name"])
-
+    # Sort by total issues descending, take top 20
+    audit_flags["_total"] = audit_flags.sum(axis=1)
+    audit_flags = audit_flags.sort_values("_total", ascending=False).drop(columns="_total")
     top20 = audit_flags.head(20)
 
+    # Build annotation array: blank for 0, warning symbol for 1
+    annot = top20.copy().astype(object)
+    annot[top20 == 0] = ""
+    annot[top20 == 1] = "⚠"
+
     fig, ax = plt.subplots(figsize=(12, 10))
-    sns.heatmap(top20, cmap=["#e8f4e8", "#d62728"], linewidths=0.5,
-                linecolor='white', cbar=False, ax=ax,
-                annot=top20.replace({0: "", 1: "⚠"}).values,
-                fmt='', annot_kws={"size": 12})
-    ax.set_title('PMax Audit — Issue Flags (Top 20 Campaigns by Priority)',
-                 fontsize=13, fontweight='bold', pad=15)
-    ax.set_xlabel('Audit Dimension')
-    ax.set_ylabel('Campaign')
-    ax.tick_params(axis='y', labelsize=8)
+    sns.heatmap(
+        top20,
+        cmap=["#e8f4e8", "#d62728"],
+        linewidths=0.5,
+        linecolor="white",
+        cbar=False,
+        ax=ax,
+        vmin=0, vmax=1,
+        annot=annot.values,
+        fmt="",
+        annot_kws={"size": 13}
+    )
+    ax.set_title("PMax Audit — Issue Flags (Top 20 Campaigns by Priority)",
+                 fontsize=13, fontweight="bold", pad=15)
+    ax.set_xlabel("Audit Dimension", fontsize=11)
+    ax.set_ylabel("Campaign", fontsize=11)
+    ax.tick_params(axis="y", labelsize=8)
+    ax.tick_params(axis="x", labelsize=10)
     plt.tight_layout()
     plt.savefig(f"{OUTPUT}/01_audit_heatmap.png")
     plt.close()
