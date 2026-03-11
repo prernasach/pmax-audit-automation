@@ -163,7 +163,7 @@ def chart_issue_heatmap(df):
     # Build annotation array: blank for 0, warning symbol for 1
     annot = top20.copy().astype(object)
     annot[top20 == 0] = ""
-    annot[top20 == 1] = "⚠"
+    annot[top20 == 1] = "✗"
 
     fig, ax = plt.subplots(figsize=(12, 10))
     sns.heatmap(
